@@ -5,9 +5,9 @@ import logging
 logger = logging.getLogger(__name__)
 
 async def run_trivy_repo_scan(repo_url: str):
-    """Run Trivy repository scan."""
-    scan_output_path = os.path.join("/app/scan-results", "trivy_repo_scan.log")
-    logger.info(f"Running Trivy repo scan on: {repo_url}")
+    """Run Trivy remote repository scan."""
+    scan_output_path = os.path.join("/app/scan-results", "trivy_remote_repo_scan.log")
+    logger.info(f"Running Trivy remote repo scan on: {repo_url}")
 
     command = ["trivy", "repo", repo_url, "--format", "table"]
 
@@ -20,13 +20,13 @@ async def run_trivy_repo_scan(repo_url: str):
         if process.returncode == 0:
             with open(scan_output_path, "w") as f:
                 f.write(stdout.decode())
-            logger.info("Trivy repository scan completed successfully.")
+            logger.info("Trivy remote repo scan completed successfully.")
             return {
-                "path": repo_url, "scan_type": "Trivy Repo", "details": stdout.decode()
+                "path": repo_url, "scan_type": "Trivy Remote Repo", "details": stdout.decode()
             }
         else:
-            logger.error(f"Trivy repo scan failed: {stderr.decode()}")
-            return {"error": f"Trivy repo scan failed: {stderr.decode()}"}
+            logger.error(f"Trivy remote repo scan failed: {stderr.decode()}")
+            return {"error": f"Trivy scan failed: {stderr.decode()}"}
     except Exception as e:
         logger.error(f"Exception during Trivy repo scan: {e}")
         return {"error": str(e)}
