@@ -10,10 +10,11 @@ from starlette.staticfiles import StaticFiles
 from scanners.trivy_fs_scanner import run_trivy_fs_scan
 from scanners.trivy_image_scanner import run_trivy_image_scan
 from scanners.trivy_repo_scanner import run_trivy_repo_scan
+from scanners.clone_and_local_scan import clone_and_scan_repo
 from scanners.clamav_scanner import run_clamav_fs_scan
-from scanners.yara_scanner import run_yara_scan
 from scanners.grype_scanner import run_grype_image_scan
 from scanners.syft_scanner import run_syft_sbom_scan
+from scanners.yara_scanner import run_yara_scan
 from utils.extract import extract_files
 from utils.rezip import zip_directory
 
@@ -23,7 +24,6 @@ logger = logging.getLogger(__name__)
 
 # Configurations
 UPLOAD_FOLDER = "/app/uploads"
-SCAN_RESULTS_FOLDER = "/app/scan-results"
 os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 
 # Create FastAPI instance
@@ -50,6 +50,7 @@ async def scan_file(
     scan_results = []
 
     if scan_type == "filesystem" and file:
+        # Filesystem Scan
         file_path = os.path.join(UPLOAD_FOLDER, file.filename)
         with open(file_path, "wb") as f:
             f.write(await file.read())
@@ -75,6 +76,7 @@ async def scan_file(
         os.remove(file_path)
 
     elif scan_type == "image" and image_name:
+        # Image Scan
         scan_results.extend([
             await run_trivy_image_scan(image_name),
             await run_grype_image_scan(image_name),
@@ -82,7 +84,8 @@ async def scan_file(
         ])
 
     elif scan_type == "repo" and repo_url:
-        scan_results.append(await run_trivy_repo_scan(repo_url))
+        # Repository Scan
+        scan_results.extend(await clone_and_scan_repo(repo_url))
 
     else:
         raise HTTPException(status_code=400, detail="Invalid scan type or missing parameters.")
