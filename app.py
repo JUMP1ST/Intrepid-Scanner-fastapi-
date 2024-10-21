@@ -22,11 +22,28 @@ from utils.rezip import zip_directory
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Configurations
+# --- Configuration Directories ---
 UPLOAD_FOLDER = "/app/uploads"
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+SCAN_RESULTS_FOLDER = "/app/scan-results"
+YARA_RULES_FOLDER = "/app/yara_rules"
+CLAMAV_SOCKET_DIR = "/var/run/clamav"
 
-# Create FastAPI instance
+def ensure_directories():
+    """Ensure all necessary directories exist."""
+    try:
+        os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+        os.makedirs(SCAN_RESULTS_FOLDER, exist_ok=True)
+        os.makedirs(YARA_RULES_FOLDER, exist_ok=True)
+        os.makedirs(CLAMAV_SOCKET_DIR, exist_ok=True)
+        logger.info("All directories are created successfully.")
+    except Exception as e:
+        logger.error(f"Failed to create directories: {e}")
+        raise
+
+# Ensure directories are created on startup
+ensure_directories()
+
+# --- FastAPI Application Setup ---
 app = FastAPI()
 
 # Mount static files and templates
@@ -38,7 +55,7 @@ async def get_index(request: Request):
     """Serve the index.html."""
     return templates.TemplateResponse("index.html", {"request": request, "scan_results": []})
 
-@app.post("/scan/")
+@app.post("/scan/", response_class=HTMLResponse)
 async def scan_file(
     request: Request,
     scan_type: str = Form(...),
@@ -46,7 +63,7 @@ async def scan_file(
     image_name: str = Form(None),
     repo_url: str = Form(None),
 ):
-    """Handle file, image, and repository scans."""
+    """Handle filesystem, image, and repository scans."""
     scan_results = []
 
     if scan_type == "filesystem" and file:
@@ -55,7 +72,6 @@ async def scan_file(
         with open(file_path, "wb") as f:
             f.write(await file.read())
 
-        # Extract and scan files
         extract_path = os.path.join(UPLOAD_FOLDER, "extracted")
         os.makedirs(extract_path, exist_ok=True)
 
@@ -65,6 +81,7 @@ async def scan_file(
                 await run_clamav_fs_scan(extract_path),
                 await run_yara_scan(extract_path),
             ])
+            # Zip scanned files
             zip_file_path = os.path.join(UPLOAD_FOLDER, f"{file.filename}_scanned.zip")
             zip_directory(extract_path, zip_file_path)
             scan_results.append({
@@ -85,13 +102,16 @@ async def scan_file(
 
     elif scan_type == "repo" and repo_url:
         # Repository Scan
-        scan_results.extend(await clone_and_scan_repo(repo_url))
+        repo_scan_results = await clone_and_scan_repo(repo_url)
+        for result in repo_scan_results:
+            scan_results.append(result)
 
     else:
         raise HTTPException(status_code=400, detail="Invalid scan type or missing parameters.")
 
-    return templates.TemplateResponse("index.html", {"request": request, "scan_results": scan_results})
+    return templates.TemplateResponse("scan.html", {"request": request, "scan_results": scan_results})
 
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8000)
+
