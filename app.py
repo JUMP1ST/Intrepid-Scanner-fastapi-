@@ -7,11 +7,13 @@ from fastapi.templating import Jinja2Templates
 from starlette.requests import Request
 from starlette.staticfiles import StaticFiles
 
+from scanners.trivy_fs_scanner import run_trivy_fs_scan
+from scanners.trivy_image_scanner import run_trivy_image_scan
+from scanners.trivy_repo_scanner import run_trivy_repo_scan
 from scanners.clamav_scanner import run_clamav_fs_scan
+from scanners.yara_scanner import run_yara_scan
 from scanners.grype_scanner import run_grype_image_scan
 from scanners.syft_scanner import run_syft_sbom_scan
-from scanners.trivy_scanner import run_trivy_fs_scan, run_trivy_image_scan
-from scanners.yara_scanner import run_yara_scan
 from utils.extract import extract_files
 from utils.rezip import zip_directory
 
@@ -52,7 +54,7 @@ async def scan_file(
         with open(file_path, "wb") as f:
             f.write(await file.read())
 
-        # Extract and run scans
+        # Extract and scan files
         extract_path = os.path.join(UPLOAD_FOLDER, "extracted")
         os.makedirs(extract_path, exist_ok=True)
 
@@ -69,7 +71,7 @@ async def scan_file(
                 "scan_type": "Re-zipped Archive",
                 "details": "Files re-zipped after scanning."
             })
-            shutil.rmtree(extract_path)  # Clean up extracted files
+            shutil.rmtree(extract_path)  # Cleanup
         os.remove(file_path)
 
     elif scan_type == "image" and image_name:
@@ -80,19 +82,7 @@ async def scan_file(
         ])
 
     elif scan_type == "repo" and repo_url:
-        repo_name = os.path.basename(repo_url).replace(".git", "")
-        repo_path = os.path.join(UPLOAD_FOLDER, repo_name)
-
-        if os.path.exists(repo_path):
-            shutil.rmtree(repo_path)
-
-        git.Repo.clone_from(repo_url, repo_path)
-        scan_results.extend([
-            await run_trivy_fs_scan(repo_path),
-            await run_clamav_fs_scan(repo_path),
-            await run_yara_scan(repo_path),
-        ])
-        shutil.rmtree(repo_path)
+        scan_results.append(await run_trivy_repo_scan(repo_url))
 
     else:
         raise HTTPException(status_code=400, detail="Invalid scan type or missing parameters.")
